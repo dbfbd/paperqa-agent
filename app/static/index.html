@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>论文实验对照与证据核验</title>
+  <style>
+    :root {
+      font-family: system-ui, sans-serif;
+      color: #16332d;
+      background: #f5f7f5;
+      line-height: 1.6;
+    }
+    body {
+      max-width: 1150px;
+      margin: 38px auto;
+      padding: 0 24px;
+    }
+    h1 {
+      font-size: 28px;
+      margin-bottom: 4px;
+    }
+    .lead {
+      color: #60736b;
+      margin-top: 0;
+    }
+    section {
+      background: white;
+      border: 1px solid #dce6df;
+      border-radius: 12px;
+      padding: 22px;
+      margin: 18px 0;
+    }
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 115px;
+      font: inherit;
+      border: 1px solid #bdcfc3;
+      border-radius: 7px;
+      padding: 12px;
+    }
+    button {
+      font: inherit;
+      background: #195b46;
+      color: white;
+      border: 0;
+      padding: 9px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 10px 8px 0 0;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: wait;
+    }
+    .secondary {
+      background: #edf3ee;
+      color: #195b46;
+    }
+    input {
+      font: inherit;
+    }
+    label {
+      display: inline-block;
+      margin: 8px 14px 5px 0;
+    }
+    small,
+    .muted {
+      color: #60736b;
+    }
+    .scroll {
+      overflow: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 14px;
+    }
+    th,
+    td {
+      border: 1px solid #dae4dd;
+      padding: 10px;
+      min-width: 150px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: #edf3ee;
+    }
+    a {
+      color: #19674f;
+    }
+    .fact {
+      border-bottom: 1px dashed #dde6df;
+      margin-bottom: 8px;
+      padding-bottom: 6px;
+    }
+    .quote {
+      white-space: pre-wrap;
+      background: #f3f6f3;
+      padding: 12px;
+      margin: 8px 0;
+      overflow-wrap: anywhere;
+    }
+    #message {
+      white-space: pre-wrap;
+    }
+    .error {
+      color: #a12e24;
+    }
+    .explanation {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    summary {
+      cursor: pointer;
+    }
+    #spec {
+      min-height: 170px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    #usage {
+      white-space: pre-wrap;
+    }
+  </style>
+  <h1>论文实验对照与证据核验</h1>
+  <p class="lead">
+    指定实验与比较维度，查看条件差异、依据摘录和仍未解决的内容。
+  </p>
+  <section>
+    <strong>1 · 选择材料</strong>
+    <p><input type="file" id="files" multiple accept=".pdf,.txt" /></p>
+    <button id="upload">上传并入库</button>
+    <p id="upload-status" role="status"></p>
+    <div id="documents"></div>
+  </section>
+  <section>
+    <strong>2 · 写清要比较的问题</strong>
+    <p>
+      <textarea
+        id="question"
+        placeholder="例如：比较 A 的 large 模型与 B 的 base 模型在指定数据集上的结果，列出数据划分、指标定义、额外训练数据及限制，并附原文依据。"
+      ></textarea>
+    </p>
+    <details>
+      <summary>可选：明确指定实验对象与维度</summary>
+      <p class="muted">
+        使用上方文档 ID。填写后跳过模型的任务结构化步骤；留空则由模型整理。
+      </p>
+      <textarea
+        id="spec"
+        placeholder='{"objects":[{"object_id":"a","name":"A-large","doc_ids":["文档ID"],"experiment_hint":"Table 1"}],"dimensions":["dataset","metric","result"]}'
+      ></textarea>
+    </details>
+    <button id="ask">开始核验</button
+    ><small>只勾选的材料可被本次任务使用。过程可能需要数分钟。</small>
+    <p id="message" role="status"></p>
+  </section>
+  <section id="output" hidden>
+    <strong id="status"></strong>
+    <p id="usage"></p>
+    <div id="table" class="scroll"></div>
+    <h3>解释与比较限制</h3>
+    <div id="explanation" class="explanation"></div>
+    <h3>缺口与冲突</h3>
+    <div id="gaps"></div>
+    <details>
+      <summary>查看工具调用与运行记录</summary>
+      <pre id="trace" class="quote"></pre>
+    </details>
+    <button id="download" class="secondary">下载完整结果 JSON</button>
+    <button id="markdown" class="secondary">下载答案 Markdown</button>
+  </section>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let result = null;
+    function node(tag, text, cls) {
+      let n = document.createElement(tag);
+      if (text !== undefined) n.textContent = text;
+      if (cls) n.className = cls;
+      return n;
+    }
+    async function request(path, options) {
+      let response = await fetch(path, options);
+      let data = await response.json();
+      if (!response.ok) throw Error(JSON.stringify(data.detail || data));
+      return data;
+    }
+    function showDocuments(documents) {
+      const previous = new Map(
+        [...$("documents").querySelectorAll("input")].map((x) => [x.value, x.checked]),
+      );
+      $("documents").replaceChildren();
+      for (let doc of documents) {
+        let label = node("label");
+        let input = node("input");
+        input.type = "checkbox";
+        input.checked = previous.get(doc.doc_id) ?? true;
+        input.value = doc.doc_id;
+        label.append(input, document.createTextNode(" " + doc.name + " · " + doc.doc_id));
+        $("documents").append(label, node("br"));
+      }
+    }
+    request("/documents").then((data) => showDocuments(data.documents)).catch((error) => {
+      $("upload-status").textContent = error.message;
+    });
+    $("upload").onclick = async () => {
+      if (!$("files").files.length) return;
+      $("upload").disabled = true;
+      $("upload-status").textContent = "正在上传材料……";
+      try {
+        let form = new FormData();
+        for (let f of $("files").files) form.append("files", f);
+        let { job_id } = await request("/documents?wait=false", { method: "POST", body: form });
+        while (true) {
+          let job = await request("/ingestions/" + encodeURIComponent(job_id));
+          if (job.status === "failed") throw Error(job.error || "入库失败");
+          if (job.status === "ready") break;
+          $("upload-status").textContent =
+            job.status === "queued" ? "入库已排队，可继续查询现有资料。"
+              : "正在构建新索引，可继续查询现有资料。";
+          await new Promise((resolve) => setTimeout(resolve, 750));
+        }
+        const data = await request("/documents");
+        showDocuments(data.documents);
+        $("upload-status").textContent = "新索引已发布 · " + data.index_version.slice(0, 8);
+      } catch (e) {
+        $("upload-status").textContent = e.message;
+      } finally {
+        $("upload").disabled = false;
+      }
+    };
+    function sourceLink(source) {
+      let a = node(
+        "a",
+        "打开原文" +
+          (source.pages.length
+            ? " · PDF第" + source.pages.join(",") + "页"
+            : ""),
+      );
+      a.href =
+        "/sources/" +
+        encodeURIComponent(source.doc_id) +
+        (source.pages.length ? "#page=" + source.pages[0] : "");
+      a.target = "_blank";
+      a.rel = "noopener";
+      return a;
+    }
+    function render(data) {
+      result = data;
+      $("output").hidden = false;
+      $("status").textContent =
+        "运行状态：" + data.status + "（不等于答案已通过人工评测）";
+      $("usage").textContent =
+        "耗时 " +
+        data.elapsed_seconds.toFixed(1) +
+        " 秒 · 模型调用 " +
+        data.usage.requests +
+        " 次 · 输入/输出 token " +
+        data.usage.prompt_tokens +
+        "/" +
+        data.usage.completion_tokens;
+      let info = data.result,
+        lookup = Object.fromEntries(
+          (info.facts || []).map((f) => [f.fact_id, f]),
+        );
+      let table = node("table"),
+        head = node("tr");
+      head.append(node("th", "实验对象"));
+      for (let dim of info.dimensions || []) head.append(node("th", dim));
+      table.append(head);
+      for (let row of info.rows || []) {
+        let tr = node("tr");
+        tr.append(node("td", row.name));
+        for (let dim of info.dimensions) {
+          let td = node("td"),
+            cell = row.cells[dim];
+          if (!cell.fact_ids.length)
+            td.append(
+              node(
+                "span",
+                cell.status === "excluded_by_budget"
+                  ? "未进入本次回答"
+                  : "尚未取得依据",
+              ),
+            );
+          if (cell.status === "conflict") td.append(node("strong", "存在冲突"));
+          for (let id of cell.fact_ids) {
+            let fact = lookup[id];
+            if (!fact) continue;
+            let box = node("div", fact.value + (fact.unit || ""), "fact");
+            box.append(
+              node(
+                "div",
+                Object.entries(fact.conditions)
+                  .filter(([k, v]) => v)
+                  .map(([k, v]) => k + "=" + v)
+                  .join("；"),
+                "muted",
+              ),
+            );
+            let details = node("details");
+            details.append(node("summary", "依据 " + id));
+            for (let s of fact.sources) {
+              details.append(node("div", s.quote, "quote"), sourceLink(s));
+            }
+            box.append(details);
+            td.append(box);
+          }
+          tr.append(td);
+        }
+        table.append(tr);
+      }
+      $("table").replaceChildren(table);
+      $("explanation").textContent = data.answer_is_current
+        ? data.explanation
+        : data.answer;
+      $("gaps").replaceChildren();
+      for (let c of info.coverage || [])
+        if (c.status !== "found")
+          $("gaps").append(
+            node("p", c.object_id + " / " + c.dimension + "：" + c.status),
+          );
+      for (let issue of info.source_read_issues || []) {
+        let p = node("p", issue.issue + " ");
+        p.append(sourceLink(issue));
+        $("gaps").append(p);
+      }
+      $("trace").textContent = JSON.stringify(
+        { tools: data.tool_history, events: data.trace },
+        null,
+        2,
+      );
+    }
+    $("ask").onclick = async () => {
+      $("ask").disabled = true;
+      $("message").textContent = "正在搜索、提炼与核验；完成后显示结果……";
+      try {
+        let ids = [...$("documents").querySelectorAll("input:checked")].map(
+          (x) => x.value,
+        );
+        let payload = { question: $("question").value };
+        if ($("documents").childElementCount) payload.doc_ids = ids;
+        if ($("spec").value.trim()) payload.spec = JSON.parse($("spec").value);
+        let data = await request("/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        render(data);
+        $("message").textContent = data.answer_is_current
+          ? "已形成当前证据下的结果。"
+          : "运行未完成，请查看记录与当前证据快照。";
+      } catch (e) {
+        $("message").textContent = e.message;
+      } finally {
+        $("ask").disabled = false;
+      }
+    };
+    function download(name, text, type) {
+      let url = URL.createObjectURL(new Blob([text], { type }));
+      let a = node("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    $("download").onclick = () =>
+      download(
+        result.run_id + ".json",
+        JSON.stringify(result, null, 2),
+        "application/json",
+      );
+    $("markdown").onclick = () =>
+      download(result.run_id + ".md", result.answer, "text/markdown");
+  </script>
+</html>

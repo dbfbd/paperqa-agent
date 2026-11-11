@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paper-qa"
+version = "5.26.0+refactor.2"
+description = "基于 PaperQA 的本地论文实验对照与证据核验 Agent"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+dependencies = [
+  "pydantic>=2.10,<3", "numpy>=2,<3", "fhlmi==0.45.0",
+  "fhaviary[llm]==0.34.0", "litellm==1.82.4", "tantivy>=0.22,<0.26",
+  "paper-qa-pymupdf", "httpx[socks]>=0.28,<0.29",
+  "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "python-multipart>=0.0.18",
+  "jsonschema>=4,<5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.24,<2", "ruff>=0.11"]
+rag = ["sentence-transformers==5.1.2", "transformers==4.57.1", "torch==2.15.0"]
+redis = ["redis>=5,<8"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[project.scripts]
+pqa = "paperqa.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src", "."]
+include = ["paperqa*", "app"]
+namespaces = true
+
+[tool.setuptools.package-data]
+app = ["static/*.html"]

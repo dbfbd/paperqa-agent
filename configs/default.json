@@ -1,0 +1,15 @@
+{
+  "model": "deepseek/deepseek-flash",
+  "api_key_env": "DEEPSEEK_API_KEY",
+  "model_params": {
+    "api_base": "https://api.deepseek.com",
+    "temperature": 0,
+    "max_tokens": 3000,
+    "max_retries": 0,
+    "extra_body": {"thinking": {"type": "disabled"}}
+  },
+  "embedding": "sparse",
+  "index": {"paper_directory": "papers", "index_directory": ".paperqa-v1", "index_name": "library"},
+  "answer": {"evidence_k": 8, "max_sources": 12, "context_chars": 24000},
+  "agent": {"max_steps": 16, "max_calls": 60, "max_tokens": 120000, "timeout": 300}
+}

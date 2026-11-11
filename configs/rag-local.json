@@ -1,0 +1,36 @@
+{
+  "model": "deepseek/deepseek-flash",
+  "api_key_env": "DEEPSEEK_API_KEY",
+  "model_params": {
+    "api_base": "https://api.deepseek.com",
+    "temperature": 0,
+    "max_tokens": 3000,
+    "max_retries": 0,
+    "extra_body": {"thinking": {"type": "disabled"}}
+  },
+  "embedding": "local/intfloat/multilingual-e5-small",
+  "embedding_params": {
+    "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "query_prefix": "query: ",
+    "document_prefix": "passage: ",
+    "max_length": 512,
+    "device": "cpu",
+    "threads": 6,
+    "batch_size": 16
+  },
+  "parsing": {"table_layout_fallback": true},
+  "index": {
+    "paper_directory": "papers",
+    "index_directory": ".paperqa-v1",
+    "index_name": "rag-local",
+    "document_hybrid": true
+  },
+  "answer": {
+    "retrieval_mode": "hybrid",
+    "evidence_k": 8,
+    "max_sources": 12,
+    "context_chars": 24000,
+    "rerank": {"enabled": true}
+  },
+  "agent": {"max_steps": 16, "max_calls": 60, "max_tokens": 120000, "timeout": 300, "gap_repair": true}
+}
